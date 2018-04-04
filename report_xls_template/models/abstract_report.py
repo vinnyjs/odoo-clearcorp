@@ -2,17 +2,21 @@
 # © 2014 ClearCorp
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl.html).
 
-from openerp.osv import osv
+from odoo import models, api
 
 
-class AbstractReport(osv.AbstractModel):
+class AbstractReport(models.Model):
     """Model used to embed old style reports"""
 
-    _inherit = 'report.abstract_report'
+    _inherit = 'ir.actions.report'
     _report_render_type = None
 
-    def render_html(self, cr, uid, ids, data=None, context=None):
-
+    @api.multi
+    def render_html(self, data=None):
+        context = self.env.context
+        uid = self.env.uid
+        ids = self.ids
+        cr = self.env.cr
         if self._report_render_type == 'qweb-xls':
             context = dict(context or {})
 

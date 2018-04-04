@@ -5,20 +5,44 @@
 
 import json
 from werkzeug import exceptions, url_decode
-from openerp.addons.web.http import Controller, route, request
-from openerp.addons.web.controllers.main import _serialize_exception
-from openerp.addons.web.controllers.main import content_disposition
-from openerp.tools import html_escape
+from odoo.addons.web.controllers.main import ReportController as Controller
+from odoo.http import request, route
+from odoo.addons.web.controllers.main import _serialize_exception
+from odoo.addons.web.controllers.main import content_disposition
+from odoo.tools import html_escape
 
 
 class ReportXLSController(Controller):
+
+    @route(['/report/download'], type='http', auth="user")
+    def report_download_override(self, data, token):
+        """This function is used by 'qwebactionmanager.js' in order to trigger the download of
+        a pdf/controller report.
+
+        :param data: a javascript array JSON.stringified containg report internal url ([0]) and
+        type [1]
+        :returns: Response with a filetoken cookie and an attachment header
+        """
+        requestcontent = json.loads(data)
+        url, type = requestcontent[0], requestcontent[1]
+        try:
+            if type == 'qweb-pdf':
+                return super(ReportXLSController, self).report_download(data, token)
+            elif type == 'qweb-xls':
+                return self.report_download_xls(data, token)
+        except Exception, e:
+            raise exceptions.HTTPException(
+                description='Error %s .' % (e,))
+
+    report_download = report_download_override
 
     @route([
         '/reportxlstemplate/<path:converter>/<reportname>',
         '/reportxlstemplate/<path:converter>/<reportname>/<docids>',
     ], type='http', auth='user', website=True)
-    def report_routes(self, reportname, docids=None, converter=None, **data):
-        report_obj = request.registry['report']
+    def report_routes_xls(self, reportname, docids=None, converter=None, **data):
+        #report_obj = self._get_xls_report_from_name(request.registry['ir.actions.report'], reportname)
+        report_obj = request.env['ir.actions.report']._get_report_xls_name(reportname)
         cr, uid, context = request.cr, request.uid, request.context
 
         if docids:
@@ -35,8 +59,7 @@ class ReportXLSController(Controller):
             context.update(data['context'])
 
         if converter == 'xls':
-            xls = report_obj.get_xls(
-                cr, uid, docids, reportname, data=data, context=context)
+            xls = report_obj.get_xls(docids, reportname, data)
             xlsxhttpheaders = [
                 ('Content-Type',
                  'application/vnd.openxmlformats-officedocument.'
@@ -55,8 +78,7 @@ class ReportXLSController(Controller):
             raise exceptions.HTTPException(
                 description='Converter %s not implemented.' % converter)
 
-    @route(['/reportxlstemplate/download'], type='http', auth="user")
-    def report_download(self, data, token):
+    def report_download_xls(self, data, token):
         """This function is used by 'report_xls.js' in order to
         trigger the download of xls/ods report.
         :param token: token received by controller
@@ -69,24 +91,23 @@ class ReportXLSController(Controller):
         try:
             if report_type == 'qweb-xls':
                 reportname = url.split(
-                    '/reportxlstemplate/xls/')[1].split('?')[0]
+                    '/report/pdf/')[1].split('?')[0]
                 docids = None
                 if '/' in reportname:
                     reportname, docids = reportname.split('/')
                 if docids:
                     # Generic report:
-                    response = self.report_routes(
+                    response = self.report_routes_xls(
                         reportname, docids=docids, converter='xls')
                 else:
                     # Particular report:
                     # Decoding the args represented in JSON
                     data = url_decode(url.split('?')[1]).items()
-                    response = self.report_routes(
+                    response = self.report_routes_xls(
                         reportname, converter='xls', **dict(data))
 
                 cr, uid = request.cr, request.uid
-                report = request.registry['report']._get_xls_report_from_name(
-                    cr, uid, reportname)
+                report = request.env['ir.actions.report']._get_report_xls_name(reportname)
                 filename = "%s.%s" % (report.name, "xlsx")
                 response.headers.add(
                     'Content-Disposition',

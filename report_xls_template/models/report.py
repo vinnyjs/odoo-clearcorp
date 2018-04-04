@@ -26,49 +26,42 @@ _logger = logging.getLogger('report_xls_template')
 
 class Report(models.Model):
 
-    _inherit = 'report'
+    _inherit = 'ir.actions.report'
 
-    @api.v7
-    def get_html(self, cr, uid, ids, report_name, data=None, context=None):
-        report = self._get_xls_report_from_name(cr, uid, report_name)
+    @api.model
+    def get_html(self, ids, report_name, data=None):
+        report = self
         if report:
             try:
                 report_model_name = 'report.%s' % report_name
-                particularreport_obj = self.pool[report_model_name]
+                particularreport_obj = self.env[report_model_name]
                 return particularreport_obj.render_html(
                     cr, uid, ids, data=data, context=context)
             except KeyError:
-                report_obj = self.pool[report.model]
-                docs = report_obj.browse(cr, uid, ids, context=context)
+                report_obj = self.env[report.model]
+                docs = report_obj.browse(ids)
                 docargs = {
                            'doc_ids': ids,
                            'doc_model': report.model,
                            'docs': docs,
                            }
-                return self.pool.get('report').render(
-                    cr, uid, [], report.report_name, docargs, context=context)
+                return self.render_template(report.report_name, docargs)
         else:
-            return super(Report, self).get_html(
-                cr, uid, ids, report_name, data=data, context=context)
+            return super(Report, self).get_html(ids, report_name, data=data, context=context)
 
-    @api.v7
-    def get_xls(self, cr, uid, ids, report_name,
-                html=None, data=None, context=None):
+    def get_xls(self, records, report_name, data=None):
         """
         This method generates and returns xls version of a report.
         """
-        if context is None:
-            context = {}
-
-        report_obj = self.pool.get('report')
-        if html is None:
-            html = report_obj.get_html(
-                cr, uid, ids, report_name, data=data, context=context)
+        report_obj = self
+        html = report_obj.get_html(records, report_name, data=data)
 
         # Ensure the current document is utf-8 encoded.
         html = html.decode('utf-8')
 
         def render_element_value(value, type):
+            if not value or value == '':
+                return ''
             if type == 'date':
                 return datetime.datetime.strptime(
                     value, DEFAULT_SERVER_DATE_FORMAT).date()
@@ -79,8 +72,8 @@ class Report(models.Model):
                 val = ast.literal_eval(value)
                 return val
             except Exception as e:
-                _logger.info(
-                    'Could not convert %s to type.' % e.message)
+                _logger.warning(
+                    'Could not convert "%s" to type.' % value)
             return value
 
         # Method should be rewritten for a more complex rendering
@@ -153,7 +146,7 @@ class Report(models.Model):
                 cell_format = workbook.add_format(cell_format)
             except Exception as exc:
                 cell_format = False
-                _logger.info(
+                _logger.error(
                     'An error occurred loading the format. %s' % exc.message)
 
             if colspan_number or rowspan_number:
@@ -166,7 +159,7 @@ class Report(models.Model):
                         row_index, column_index, row_index + rowspan_number,
                         column_index + colspan_number, value, cell_format)
                 except Exception:
-                    _logger.info(
+                    _logger.error(
                         'An error occurred while merging cells')
             else:
                 worksheet.write(row_index, column_index, value, cell_format)
@@ -175,7 +168,7 @@ class Report(models.Model):
                 for image in column.xpath('img'):
                     insert_image(worksheet, image, row_index, column_index)
             except:
-                _logger.info('An error occurred inserting images.')
+                _logger.error('An error occurred inserting images.')
 
         # Create the workbook
         output = StringIO()
@@ -257,41 +250,29 @@ class Report(models.Model):
                             column_index += 1
                         row_index += merged_rows and max(merged_rows) or 1
                 worksheet_counter += 1
-        except:
+        except Exception, e:
             raise Warning(
-                _('An error occurred while parsing the view into file.'))
+                _('An error occurred while parsing the view into file.\n Error'%(e,)))
 
         workbook.close()  # Save the workbook that we are going to return
         output.seek(0)
         return output.read()
 
-    @api.v8
-    def get_xls(self, records, report_name, html=None, data=None):
-        return self._model.get_xls(
-            self._cr, self._uid, records.ids, report_name,
-            html=html, data=data, context=self._context)
-
-    @api.v7
-    def get_ods(
-            self, cr, uid, ids, report_name,
-            html=None, data=None, context=None):
-        raise NotImplementedError
-
-    @api.v8
+    @api.model
     def get_ods(self, records, report_name, html=None, data=None):
         raise NotImplementedError
 
-    def _get_xls_report_from_name(self, cr, uid, report_name):
+    @api.model
+    def _get_report_xls_name(self, report_name):
+        """Get the first record of ir.actions.report having the ``report_name`` as value for
+        the field report_name.
         """
-        Get the first record of ir.actions.report.xml having
-        the ``report_name`` as value for the field report_name.
-        """
-        report_obj = self.pool['ir.actions.report.xml']
+        report_obj = self.env['ir.actions.report']
+
         qweb_xls_types = ['qweb-xls', 'qweb-ods']
         conditions = [
             ('report_type', 'in', qweb_xls_types),
             ('report_name', '=', report_name)]
-        idreport = report_obj.search(cr, uid, conditions)
-        if idreport:
-            return report_obj.browse(cr, uid, idreport[0])
-        return None
+
+        context = self.env['res.users'].context_get()
+        return report_obj.with_context(context).search(conditions, limit=1)

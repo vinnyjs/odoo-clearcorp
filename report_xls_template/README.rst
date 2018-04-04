@@ -19,6 +19,7 @@ Usage
 =====
 
 Take a look at the report_xls_template_example module
+V11 currently in *BETA*
 
 Credits
 =======
@@ -27,6 +28,7 @@ Contributors
 ------------
 
 * Glen Sojo <glen.sojo@clearcorp.co.cr>
+* Bryan JS
 
 
 Maintainer
