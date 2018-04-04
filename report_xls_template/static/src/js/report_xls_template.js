@@ -8,15 +8,16 @@ var Report = require('report.report');
 var ActionManager = require('web.ActionManager');
 var Core = require('web.core');
 var CrashManager = require('web.crash_manager');
-var Framework = require('web.framework');
+var framework = require('web.framework');
 
-var trigger_xls_download = function(session, response, c, action, options) {
-    session.get_file({
-        url: '/reportxlstemplate/download',
+
+var trigger_xls_download = function (session, response, c, action, options) {
+    return session.get_file({
+        url: '/reportxlsqweb/download',
         data: {data: JSON.stringify(response)},
-        complete: Framework.unblockUI,
+        complete: framework.unblockUI,
         error: c.rpc_error.bind(c),
-        success: function(){
+        success: function () {
             if (action && options && !action.dialog) {
                 options.on_close();
             }
@@ -25,9 +26,9 @@ var trigger_xls_download = function(session, response, c, action, options) {
 };
 
 ActionManager.include({
-    ir_actions_report_xml: function(action, options) {
+    ir_actions_report: function(action, options) {
         var self = this;
-        Framework.blockUI();
+        framework.blockUI();
         action = _.clone(action);
         _t =  Core._t;
 
@@ -36,13 +37,13 @@ ActionManager.include({
             var report_url = '';
             switch (action.report_type) {
                 case 'qweb-xls':
-                    report_url = '/reportxlstemplate/xls/' + action.report_name;
+                    report_url = '/report/xls/' + action.report_name;
                     break;
                 case 'qweb-ods':
-                    report_url = '/reportxlstemplate/ods/' + action.report_name;
+                    report_url = '/report/ods/' + action.report_name;
                     break;
                 default:
-                    report_url = '/reportxlstemplate/xls/' + action.report_name;
+                    report_url = '/report/xls/' + action.report_name;
                     break;
             }
 
@@ -63,12 +64,13 @@ ActionManager.include({
             response[1] = action.report_type;
             var c = CrashManager;
 
-            return trigger_xls_download(self.session, response, c, action, options);
+            return trigger_xls_download(self.getSession(), response, c, action, options);
 
         } else {
             return self._super(action, options);
         }
     }
+
 });
 
 });

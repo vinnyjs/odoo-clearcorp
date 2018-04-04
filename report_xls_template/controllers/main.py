@@ -6,6 +6,7 @@
 import json
 from werkzeug import exceptions, url_decode
 from odoo.addons.web.controllers.main import ReportController as Controller
+from odoo import http
 from odoo.http import request, route
 from odoo.addons.web.controllers.main import _serialize_exception
 from odoo.addons.web.controllers.main import content_disposition
@@ -14,27 +15,6 @@ from odoo.tools import html_escape
 
 class ReportXLSController(Controller):
 
-    @route(['/report/download'], type='http', auth="user")
-    def report_download_override(self, data, token):
-        """This function is used by 'qwebactionmanager.js' in order to trigger the download of
-        a pdf/controller report.
-
-        :param data: a javascript array JSON.stringified containg report internal url ([0]) and
-        type [1]
-        :returns: Response with a filetoken cookie and an attachment header
-        """
-        requestcontent = json.loads(data)
-        url, type = requestcontent[0], requestcontent[1]
-        try:
-            if type == 'qweb-pdf':
-                return super(ReportXLSController, self).report_download(data, token)
-            elif type == 'qweb-xls':
-                return self.report_download_xls(data, token)
-        except Exception, e:
-            raise exceptions.HTTPException(
-                description='Error %s .' % (e,))
-
-    report_download = report_download_override
 
     @route([
         '/reportxlstemplate/<path:converter>/<reportname>',
@@ -78,6 +58,7 @@ class ReportXLSController(Controller):
             raise exceptions.HTTPException(
                 description='Converter %s not implemented.' % converter)
 
+    @http.route(['/reportxlsqweb/download'], type='http', auth="user")
     def report_download_xls(self, data, token):
         """This function is used by 'report_xls.js' in order to
         trigger the download of xls/ods report.
@@ -89,9 +70,12 @@ class ReportXLSController(Controller):
         requestcontent = json.loads(data)
         url, report_type = requestcontent[0], requestcontent[1]
         try:
+            if type == 'qweb-pdf':
+                return super(ReportXLSController, self).report_download(data, token)
+
             if report_type == 'qweb-xls':
                 reportname = url.split(
-                    '/report/pdf/')[1].split('?')[0]
+                    '/report/xls/')[1].split('?')[0]
                 docids = None
                 if '/' in reportname:
                     reportname, docids = reportname.split('/')
@@ -117,7 +101,7 @@ class ReportXLSController(Controller):
 
             elif report_type == 'qweb-ods':
                 reportname = url.split(
-                    '/reportxlstemplate/ods/')[1].split('?')[0]
+                    '/report/ods/')[1].split('?')[0]
                 docids = None
                 if '/' in reportname:
                     reportname, docids = reportname.split('/')
@@ -144,7 +128,7 @@ class ReportXLSController(Controller):
 
             else:
                 return
-        except Exception, e:
+        except Exception as e:
             se = _serialize_exception(e)
             error = {
                 'code': 200,
